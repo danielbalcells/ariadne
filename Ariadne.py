@@ -36,3 +36,18 @@ class Thread:
         self.fromKnot = fKnot
         self.toKnot = tKnot
         self.thrType = tType
+
+"""
+A ThreadType determines a way of establishing a Thread between two Knots. As an
+abstract class, it is up to the specific implementation of a ThreadType
+subclass to determine how two Knots might be connected. ThreadTypes implement
+the Knot connection logic at the DB level.
+"""
+class ThreadType:
+    # Renders the thread data into output
+    def render():
+        raise NotImplementedError("Should have implemented this")
+    # Queries the database to fin possible Knots implementing the specific
+    # connection logic of each ThreadType
+    def getAllPossibleThreads(db, fromKnot):
+        raise NotImplementedError("Should have implemented this")
