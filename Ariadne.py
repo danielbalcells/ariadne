@@ -10,31 +10,23 @@ It includes a MB recording object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
 class Knot:
-    # MB Recording object containing the actual music
-    mb.Recording rec
-    # Inbound connection to this Knot
-    Thread inThread
-    # Knot that led to this Knot through inThread
-    Knot prevKnot
-
     def __init__(self, r, iThread, pKnot):
+        # MB Recording object containing the actual music
         self.rec = r
+        # Inbound connection to this Knot
         self.inThread = iThread
+        # Knot that led to this Knot through inThread
         self.prevKnot = pKnot
 """
 A Thread is a link between two Knots. It is an abstraction of one or many MB
 Links, as defined by its ThreadType.
 """
 class Thread:
-    # Knots connected by this Thread
-    Knot fromKnot
-    Knot toKnot
-    # Type of connection between the Knots
-    ThreadType thrType
-
     def __init__(self, fKnot, tKnot, tType):
+        # Knots connected by this Thread
         self.fromKnot = fKnot
         self.toKnot = tKnot
+        # Type of connection between the Knots
         self.thrType = tType
 
 """
