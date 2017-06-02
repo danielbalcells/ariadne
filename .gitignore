@@ -1,0 +1,5 @@
+# Ignore file with DB connection credentials
+conn_strings.yml
+
+# Ignore NFS backup files
+*.nfs*
