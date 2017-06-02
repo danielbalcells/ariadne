@@ -37,9 +37,53 @@ the Knot connection logic at the DB level.
 """
 class ThreadType:
     # Renders the thread data into output
-    def render():
+    def render(fromKnot, toKnot):
         raise NotImplementedError("Should have implemented this")
     # Queries the database to fin possible Knots implementing the specific
     # connection logic of each ThreadType
     def getAllPossibleThreads(db, fromKnot):
         raise NotImplementedError("Should have implemented this")
+
+
+"""
+An AriadneDB wraps the connection to the MusicBrainz database and provides
+useful functions to access it
+"""
+class AriadneDB:
+    def __init__(self, connString, echo):
+        engine = create_engine(connString, echo=echo)
+        Session = sessionmaker(bind=engine)
+        self.sess = Session()
+
+    # Runs a query on the DB and returns the desired amount of results
+    def queryDB(self, query, select):
+        if select == 'ALL':
+            results = query.all()
+        elif select == 'FIRST':
+            results = query.first()
+        else:
+            raise ValueError('Bad select value')
+        return results
+
+    # Returns the Artist object(s) linked to a given Recording
+    def getArtistsByRecording(self, rec, select):
+        # Navigate from Artist table to Recording table through Credit tables,
+        # get entries with matching Recording GID
+        query = self.sess.query(mb.Artist)\
+                         .join(mb.ArtistCreditName)\
+                         .join(mb.ArtistCredit)\
+                         .join(mb.Recording)\
+                         .filter(mb.Recording.gid == rec.gid)\
+                         .all()
+        return self.queryDB(query, select)
+
+    # Returns the Recording object(s) linked to a given Artist
+    def getRecordingsByArtist(self, artist, select):
+        # Navigate from Recording table to Artist table through Credit tables,
+        # get entries with matching Artist GID
+        query = self.sess.query(mb.Recording)\
+                                .join(mb.ArtistCredit)\
+                                .join(mb.ArtistCreditName)\
+                                .join(mb.Artist)\
+                                .filter(mb.Artist.gid == artist.gid)
+        return self.queryDB(query, select)
