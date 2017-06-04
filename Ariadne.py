@@ -72,6 +72,42 @@ class ThreadBySameArtist(Thread):
         return renderString
 
 """
+ThreadByGroupWithMembersInCommon: a recording by a group with a member in common
+with the previous one.
+"""
+class ThreadByGroupWithMembersInCommon(Thread):
+    # This Thread type additionally stores the names of both groups, and the
+    # name of the group member in common
+    def __init__(self, fKnot, tKnot, fGroup, tGroup, member):
+        super(ThreadByGroupWithMembersInCommon, self).__init__(fKnot, tKnot)
+        self.fromGroup = fGroup
+        self.toGroup = tGroup
+        self.memberInCommon = member
+
+    @staticmethod
+    def getAllPossibleThreads(db, fromKnot, recsPerMemberGroupPair):
+        fromRec = fromKnot.rec
+        fromGroup = db.getArtistsByRecording(fromRec, 'FIRST')
+        memberGroupPairs = db.getGroupsWithMembersInCommon(fromGroup)
+        # Iterate member-group pairs and get some recordings to make threads
+        threads = []
+        for mgPair in memberGroupPairs:
+            recs = db.getRecordingsByArtist(mgPair['group'],
+                    select=recsPerMemberGroupPair)
+            # Make a thread for each member-group-recording combination
+            for toRec in recs:
+                toKnot = Knot(toRec, pKnot=fromKnot)
+                newThread = ThreadByGroupWithMembersInCommon(
+                        fromKnot, toKnot, 
+                        fromGroup, tGroup=mgPair['group'],
+                        member=mgPair['member'])
+                toKnot.inThread = newThread
+                threads.append(newThread)
+        return threads
+
+
+
+"""
 An AriadneDB wraps the connection to the MusicBrainz database and provides
 useful functions to access it
 """
@@ -114,3 +150,39 @@ class AriadneDB(object):
                                 .join(mb.Artist)\
                                 .filter(mb.Artist.gid == artist.gid)
         return self.queryDB(query, select)
+
+    # Returns the Person Artist(s) linked to a given Group Artist
+    def getMembersByGroup(self, group, select):
+        query = self.sess.query(mb.LinkArtistArtist)\
+                         .join(mb.Link)\
+                         .join(mb.LinkType)\
+                         .filter(mb.LinkArtistArtist.entity1 == group)\
+                         .filter(mb.LinkType.name == 'member of band')
+        results = self.queryDB(query, select)
+        members = [link.entity0 for link in results]
+        return members
+
+    # Returns the Group Artist(s) linked to a given Person Artist
+    def getGroupsByMember(self, member, select):
+        query = self.sess.query(mb.LinkArtistArtist)\
+                         .join(mb.Link)\
+                         .join(mb.LinkType)\
+                         .filter(mb.LinkArtistArtist.entity0 == member)\
+                         .filter(mb.LinkType.name == 'member of band')
+        results = self.queryDB(query, select)
+        groups = [link.entity1 for link in results]
+        return groups
+
+    # Returns the Group Artist(s) with members in common with another Group
+    def getGroupsWithMembersInCommon(self, fromGroup):
+        groupMembers = self.getMembersByGroup(fromGroup, 'ALL')
+        # Iterate group members to find other groups, store them in pairs
+        memberGroupPairs = []
+        for member in groupMembers:
+            # Get groups in which this member played
+            membersGroups = self.getGroupsByMember(member, 'ALL')
+            # Keep them if they're not the same one we had before
+            for group in membersGroups:
+                if group.gid != fromGroup.gid:
+                    memberGroupPairs.append({'member': member, 'group': group})
+        return memberGroupPairs
