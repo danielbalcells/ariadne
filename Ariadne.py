@@ -7,7 +7,7 @@ import yaml
 """
 A Knot is one point in the music exploration. 
 It wraps a Recording and how the exploration led to it.
-It includes a MB Rong object, and Knot and Thread objects referring to the
+It includes a MB Recording object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
 class Knot(object):
