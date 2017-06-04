@@ -66,7 +66,7 @@ class ThreadBySameArtist(Thread):
         return threads
 
     def render(self):
-        renderString = self.toKnot.r.name +\
+        renderString = '"' + self.toKnot.rec.name + '"' +\
                        ' was also written by ' +\
                        self.artist.name
         return renderString
