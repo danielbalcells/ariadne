@@ -5,8 +5,9 @@ import pandas as pd
 import yaml
 
 """
-A Knot is an Ariadne abstraction of a MB recording.
-It includes a MB recording object, and Knot and Thread objects referring to the
+A Knot is one point in the music exploration. 
+It wraps a Recording and how the exploration led to it.
+It includes a MB Rong object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
 class Knot:
@@ -18,32 +19,44 @@ class Knot:
         # Knot that led to this Knot through inThread
         self.prevKnot = pKnot
 """
-A Thread is a link between two Knots. It is an abstraction of one or many MB
-Links, as defined by its ThreadType.
+A Thread is a link between two Knots. It wraps one or many MB Links.
+As an abstract class, it is up to the specific implementation of a Thread
+subclass to determine how two Knots might be connected.
 """
 class Thread:
     def __init__(self, fKnot, tKnot, tType):
         # Knots connected by this Thread
         self.fromKnot = fKnot
         self.toKnot = tKnot
-        # Type of connection between the Knots
-        self.thrType = tType
 
-"""
-A ThreadType determines a way of establishing a Thread between two Knots. As an
-abstract class, it is up to the specific implementation of a ThreadType
-subclass to determine how two Knots might be connected. ThreadTypes implement
-the Knot connection logic at the DB level.
-"""
-class ThreadType:
-    # Renders the thread data into output
-    def render(fromKnot, toKnot):
-        raise NotImplementedError("Should have implemented this")
     # Queries the database to fin possible Knots implementing the specific
     # connection logic of each ThreadType
+    @classmethod
     def getAllPossibleThreads(db, fromKnot):
         raise NotImplementedError("Should have implemented this")
 
+    # Renders the thread data into output
+    def render(self):
+        raise NotImplementedError("Should have implemented this")
+
+"""
+ThreadBySameArtist: two recordings by the same artist
+"""
+class ThreadBySameArtist(Thread):
+    # This Thread type additionally stores an Artist object connecting the
+    # recordings
+    def __init__(self, fKnot, tKnot, artist):
+        super(ThreadBySameArtist, self).__init__(fKnot, tKnot)
+        self.artist = artist
+
+    # To find all possible threads of this type given a starting recording, we
+    # first find its artist and then get all recordings by that artist.
+    def getAllPossibleThreads(db, fromKnot, limit=50):
+        fromRec = fromKnot.rec
+        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
+        toRecs = db.getRecordingsByArtist(fromArtist, 50)
+
+    def render(self):
 
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
@@ -61,6 +74,8 @@ class AriadneDB:
             results = query.all()
         elif select == 'FIRST':
             results = query.first()
+        elif type(select) == int:
+            results = query.limit(select)
         else:
             raise ValueError('Bad select value')
         return results
