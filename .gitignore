@@ -3,3 +3,9 @@ conn_strings.yml
 
 # Ignore NFS backup files
 *.nfs*
+
+# Ignore python bytecode
+*.pyc
+
+# Ignore VIM backup files
+*.swp
