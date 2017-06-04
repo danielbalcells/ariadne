@@ -10,8 +10,8 @@ It wraps a Recording and how the exploration led to it.
 It includes a MB Rong object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
-class Knot:
-    def __init__(self, r, iThread, pKnot):
+class Knot(object):
+    def __init__(self, r, iThread=None, pKnot=None):
         # MB Recording object containing the actual music
         self.rec = r
         # Inbound connection to this Knot
@@ -23,15 +23,15 @@ A Thread is a link between two Knots. It wraps one or many MB Links.
 As an abstract class, it is up to the specific implementation of a Thread
 subclass to determine how two Knots might be connected.
 """
-class Thread:
-    def __init__(self, fKnot, tKnot, tType):
+class Thread(object):
+    def __init__(self, fKnot, tKnot):
         # Knots connected by this Thread
         self.fromKnot = fKnot
         self.toKnot = tKnot
 
     # Queries the database to fin possible Knots implementing the specific
     # connection logic of each ThreadType
-    @classmethod
+    @staticmethod
     def getAllPossibleThreads(db, fromKnot):
         raise NotImplementedError("Should have implemented this")
 
@@ -51,18 +51,31 @@ class ThreadBySameArtist(Thread):
 
     # To find all possible threads of this type given a starting recording, we
     # first find its artist and then get all recordings by that artist.
+    @staticmethod
     def getAllPossibleThreads(db, fromKnot, limit=50):
         fromRec = fromKnot.rec
         fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
-        toRecs = db.getRecordingsByArtist(fromArtist, 50)
+        toRecs = db.getRecordingsByArtist(fromArtist, limit)
+        # Iterate possible recordings, create Threads and append to list
+        threads = []
+        for toRec in toRecs:
+            toKnot = Knot(toRec, pKnot=fromKnot)
+            newThread = ThreadBySameArtist(fromKnot, toKnot, fromArtist)
+            toKnot.inThread = newThread
+            threads.append(newThread)
+        return threads
 
     def render(self):
+        renderString = self.toKnot.r.name +\
+                       ' was also written by ' +\
+                       self.artist.name
+        return renderString
 
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
 useful functions to access it
 """
-class AriadneDB:
+class AriadneDB(object):
     def __init__(self, connString, echo):
         engine = create_engine(connString, echo=echo)
         Session = sessionmaker(bind=engine)
@@ -75,7 +88,7 @@ class AriadneDB:
         elif select == 'FIRST':
             results = query.first()
         elif type(select) == int:
-            results = query.limit(select)
+            results = query.limit(select).all()
         else:
             raise ValueError('Bad select value')
         return results
@@ -88,8 +101,7 @@ class AriadneDB:
                          .join(mb.ArtistCreditName)\
                          .join(mb.ArtistCredit)\
                          .join(mb.Recording)\
-                         .filter(mb.Recording.gid == rec.gid)\
-                         .all()
+                         .filter(mb.Recording.gid == rec.gid)
         return self.queryDB(query, select)
 
     # Returns the Recording object(s) linked to a given Artist
