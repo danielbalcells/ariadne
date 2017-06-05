@@ -84,17 +84,21 @@ class ThreadByGroupWithMembersInCommon(Thread):
         self.toGroup = tGroup
         self.memberInCommon = member
 
+    # To get the next threads from a certain Knot, we get its artist (group).
+    # We find all group members and the other groups they were part of.
+    # For each member-group pair, we find some recordings.
+    # For each member-group-recording combination, we make a new Thread.
     @staticmethod
     def getAllPossibleThreads(db, fromKnot, recsPerMemberGroupPair):
         fromRec = fromKnot.rec
         fromGroup = db.getArtistsByRecording(fromRec, 'FIRST')
         memberGroupPairs = db.getGroupsWithMembersInCommon(fromGroup)
-        # Iterate member-group pairs and get some recordings to make threads
+        # Iterate member-group pairs and get some recordings to make Threads
         threads = []
         for mgPair in memberGroupPairs:
             recs = db.getRecordingsByArtist(mgPair['group'],
                     select=recsPerMemberGroupPair)
-            # Make a thread for each member-group-recording combination
+            # Make a Thread for each member-group-recording combination
             for toRec in recs:
                 toKnot = Knot(toRec, pKnot=fromKnot)
                 newThread = ThreadByGroupWithMembersInCommon(
@@ -112,6 +116,49 @@ class ThreadByGroupWithMembersInCommon(Thread):
                        self.fromGroup.name
         return renderString
 
+"""
+ThreadByGroupMemberSoloAct: A song by a group member's solo act
+"""
+class ThreadByGroupMemberSoloAct(Thread):
+    # This Thread type additionally stores the name of the previous group, the
+    # member in common, and the member's performing name (if it applies)
+    def __init__(self, fKnot, tKnot, fGroup, member, mPerformsAs=None):
+        super(ThreadByGroupMemberSoloAct, self).__init__(fKnot, tKnot)
+        self.fromGroup = fGroup
+        self.memberInCommon = member
+        self.memberPerformsAs = mPerformsAs
+
+    @staticmethod
+    def getAllPossibleThreads(db, fromKnot, recsPerMemberActPair):
+        fromRec = fromKnot.rec
+        fromGroup = db.getArtistsByRecording(fromRec, 'FIRST')
+        # Get solo Artists related to this Group's members
+        memberActs = db.getMembersSoloActsByGroup(fromGroup)
+        # Iterate acts and get some recordings to make Threads
+        threads = []
+        for memberAct in memberActs:
+            recs = db.getRecordingsByArtist(memberAct['performsAs'],
+                    select=recsPerMemberActPair)
+            # Make a Thread for each member-group-recording combination
+            for toRec in recs:
+                toKnot = Knot(toRec, pKnot=fromKnot)
+                newThread = ThreadByGroupMemberSoloAct(
+                        fromKnot, toKnot,
+                        fromGroup, 
+                        memberAct['member'],
+                        memberAct['performsAs'])
+                threads.append(newThread)
+        return threads
+
+    def render(self):
+        renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+                       self.fromGroup.name + ' member ' +\
+                       self.memberInCommon.name
+        if self.memberInCommon.name != self.memberPerformsAs.name:
+            renderString += ', who performs as ' + self.memberPerformsAs.name
+        return renderString
+
+            
 
 
 """
@@ -135,6 +182,14 @@ class AriadneDB(object):
         else:
             raise ValueError('Bad select value')
         return results
+
+    # Checks whether an Artist has any recordings credited to them
+    def artistHasRecordings(self, artist):
+        recordings = self.getRecordingsByArtist(artist, 'FIRST')
+        if recordings:
+            return True
+        else:
+            return False
 
     # Returns the Artist object(s) linked to a given Recording
     def getArtistsByRecording(self, rec, select):
@@ -193,3 +248,33 @@ class AriadneDB(object):
                 if group.gid != fromGroup.gid:
                     memberGroupPairs.append({'member': member, 'group': group})
         return memberGroupPairs
+
+    # Returns the Artist(s) that a Person performs as
+    def getArtistsPersonPerformsAs(self, person, select):
+        query = self.sess.query(mb.LinkArtistArtist)\
+                         .join(mb.Link)\
+                         .join(mb.LinkType)\
+                         .filter(mb.LinkArtistArtist.entity0 == person)\
+                         .filter(mb.LinkType.name == 'is person')
+        results = self.queryDB(query, select)
+        artists = [link.entity1 for link in results]
+        return artists
+
+    # Returns the Artists that represent solo acts of members of a Group
+    # These can be members playing directly under their real name, or
+    # single-member acts with a name other than the member's
+    # (e.g. Richard David James performs as Aphex Twin)
+    def getMembersSoloActsByGroup(self, fromGroup):
+        groupMembers = self.getMembersByGroup(fromGroup, 'ALL')
+        acts = []
+        # Iterate group members
+        for member in groupMembers:
+            # Get acts this member performs as
+            memberPerformsAs = self.getArtistsPersonPerformsAs(member, 'ALL')
+            for artist in memberPerformsAs:
+                acts.append({'member': member, 'performsAs': artist})
+            # Add the member if they have their own recordings
+            if self.artistHasRecordings(member):
+                acts.append({'member': member, 'performsAs': member})
+        return acts
+
