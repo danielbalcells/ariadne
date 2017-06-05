@@ -137,9 +137,8 @@ class ThreadByGroupMemberSoloAct(Thread):
         # Iterate acts and get some recordings to make Threads
         threads = []
         for memberAct in memberActs:
-            recs = db.getRecordingsByArtist(memberAct['performsAs'],
+            recs = db.getRecordingsByArtist(memberAct['performsAs'],\
                     select=recsPerMemberActPair)
-            # Make a Thread for each member-group-recording combination
             for toRec in recs:
                 toKnot = Knot(toRec, pKnot=fromKnot)
                 newThread = ThreadByGroupMemberSoloAct(
@@ -157,8 +156,6 @@ class ThreadByGroupMemberSoloAct(Thread):
         if self.memberInCommon.name != self.memberPerformsAs.name:
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString
-
-            
 
 
 """
@@ -259,7 +256,7 @@ class AriadneDB(object):
         results = self.queryDB(query, select)
         artists = [link.entity1 for link in results]
         return artists
-
+    
     # Returns the Artists that represent solo acts of members of a Group
     # These can be members playing directly under their real name, or
     # single-member acts with a name other than the member's
@@ -278,3 +275,33 @@ class AriadneDB(object):
                 acts.append({'member': member, 'performsAs': member})
         return acts
 
+"""
+An AriadneController executes the high-level logic behind the Ariadne workflow
+"""
+class AriadneController(object):
+    # The AriadneControllerController receives an AriadneDB object, an initial Recording,
+    # and a list of the allowed Thread types. The constructor also initializes
+    # a starting Knot from the initial Recording and lists for Threads and Knots
+    def __init__(self, db, sRec, aThreads):
+        self.db = db
+        self.startRec = sRec
+        self.allowedThreads = aThreads
+        self.startKnot = Knot(self.startRec)
+        self.currentKnot = self.startKnot
+        self.threads = []
+        self.knots = [self.startKnot]
+
+    # Calls the getAllPossibleThreads class method of the applicable Thread
+    # types
+    def getAllPossibleThreads(self, fromKnot, applicableThreadTypes, select):
+        threads = []
+        for ThreadType in applicableThreadTypes:
+            thisTypeThreads = ThreadType.getAllPossibleThreads(
+                                    self.db, fromKnot, select)
+            threads.append({'type': ThreadType, 'threads': thisTypeThreads})
+        return threads
+
+    # Calls the isApplicable() class method on the allowed Thread types
+    def getApplicableThreadTypes(self, fromKnot):
+        return [tType for tType in self.allowedThreads  
+                    if tType.isApplicable(fromKnot)]
