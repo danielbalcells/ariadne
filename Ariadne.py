@@ -38,6 +38,12 @@ class Thread(object):
     # Renders the thread data into output
     def render(self):
         raise NotImplementedError("Should have implemented this")
+    
+    # Determines whether a Thread can be started from a given Knot
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        raise NotImplementedError("Should have implemented this")
+
 
 """
 ThreadBySameArtist: two recordings by the same artist
@@ -70,6 +76,11 @@ class ThreadBySameArtist(Thread):
                        ' was also written by ' +\
                        self.artist.name
         return renderString
+
+    # A ThreadBySameArtist can be started at any Knot
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        return True
 
 """
 ThreadByGroupWithMembersInCommon: a recording by a group with a member in common
@@ -116,6 +127,14 @@ class ThreadByGroupWithMembersInCommon(Thread):
                        self.fromGroup.name
         return renderString
 
+    # This type of Thread only applies if the artist of the current Knot
+    # is a Group
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        fromRec = fromKnot.rec
+        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
+        return db.isGroup(fromArtist)
+
 """
 ThreadByGroupMemberSoloAct: A song by a group member's solo act
 """
@@ -157,6 +176,13 @@ class ThreadByGroupMemberSoloAct(Thread):
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString
 
+    # This type of Thread only applies if the artist of the current Knot
+    # is a Group
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        fromRec = fromKnot.rec
+        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
+        return db.isGroup(fromArtist)
 
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
@@ -178,7 +204,11 @@ class AriadneDB(object):
             results = query.limit(select).all()
         else:
             raise ValueError('Bad select value')
-        return results
+        return results 
+
+    # Checks whether an Artist is a Group
+    def isGroup(self, artist):
+        return artist.type.name == 'Group'
 
     # Checks whether an Artist has any recordings credited to them
     def artistHasRecordings(self, artist):
@@ -197,7 +227,7 @@ class AriadneDB(object):
                          .join(mb.ArtistCredit)\
                          .join(mb.Recording)\
                          .filter(mb.Recording.gid == rec.gid)
-        return self.queryDB(query, select)
+        return self.queryDB(query, select) 
 
     # Returns the Recording object(s) linked to a given Artist
     def getRecordingsByArtist(self, artist, select):
@@ -279,9 +309,10 @@ class AriadneDB(object):
 An AriadneController executes the high-level logic behind the Ariadne workflow
 """
 class AriadneController(object):
-    # The AriadneControllerController receives an AriadneDB object, an initial Recording,
+    # The AriadneController receives an AriadneDB object, an initial Recording,
     # and a list of the allowed Thread types. The constructor also initializes
     # a starting Knot from the initial Recording and lists for Threads and Knots
+    # The Controller also stores the current Knot
     def __init__(self, db, sRec, aThreads):
         self.db = db
         self.startRec = sRec
@@ -293,7 +324,8 @@ class AriadneController(object):
 
     # Calls the getAllPossibleThreads class method of the applicable Thread
     # types
-    def getAllPossibleThreads(self, fromKnot, applicableThreadTypes, select):
+    def getAllPossibleThreads(self, applicableThreadTypes, select,
+            fromKnot=self.currentKnot):
         threads = []
         for ThreadType in applicableThreadTypes:
             thisTypeThreads = ThreadType.getAllPossibleThreads(
@@ -302,6 +334,6 @@ class AriadneController(object):
         return threads
 
     # Calls the isApplicable() class method on the allowed Thread types
-    def getApplicableThreadTypes(self, fromKnot):
+    def getApplicableThreadTypes(self, fromKnot=self.currentKnot):
         return [tType for tType in self.allowedThreads  
-                    if tType.isApplicable(fromKnot)]
+                    if tType.isApplicable(self.db, fromKnot)]
