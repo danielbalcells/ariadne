@@ -105,6 +105,13 @@ class ThreadByGroupWithMembersInCommon(Thread):
                 threads.append(newThread)
         return threads
 
+    def render(self):
+        renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
+                       self.toGroup.name + ', that had group member ' +\
+                       self.memberInCommon.name + ' in common with  ' +\
+                       self.fromGroup.name
+        return renderString
+
 
 
 """
