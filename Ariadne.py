@@ -3,6 +3,7 @@ from sqlalchemy.orm import sessionmaker
 import mbdata.models as mb
 import pandas as pd
 import yaml
+import numpy as np
 
 """
 A Knot is one point in the music exploration. 
@@ -43,6 +44,11 @@ class Thread(object):
     @staticmethod
     def isApplicable(db, fromKnot):
         raise NotImplementedError("Should have implemented this")
+    
+    # Returns the nResults "best" threads of a given type
+    @staticmethod
+    def rank(threads, nResults):
+        raise NotImplementedError("Should have implemented this")
 
 
 """
@@ -54,7 +60,7 @@ class ThreadBySameArtist(Thread):
     def __init__(self, fKnot, tKnot, artist):
         super(ThreadBySameArtist, self).__init__(fKnot, tKnot)
         self.artist = artist
-
+    
     # To find all possible threads of this type given a starting recording, we
     # first find its artist and then get all recordings by that artist.
     @staticmethod
@@ -70,17 +76,23 @@ class ThreadBySameArtist(Thread):
             toKnot.inThread = newThread
             threads.append(newThread)
         return threads
-
+    
     def render(self):
         renderString = '"' + self.toKnot.rec.name + '"' +\
                        ' was also written by ' +\
                        self.artist.name
         return renderString
-
+    
     # A ThreadBySameArtist can be started at any Knot
     @staticmethod
     def isApplicable(db, fromKnot):
         return True
+    
+    # Returning a random thread for now
+    @staticmethod
+    def rank(threads, nResults):
+        best = np.random.choice(threads, nResults)
+        return best
 
 """
 ThreadByGroupWithMembersInCommon: a recording by a group with a member in common
@@ -94,7 +106,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
         self.fromGroup = fGroup
         self.toGroup = tGroup
         self.memberInCommon = member
-
+    
     # To get the next threads from a certain Knot, we get its artist (group).
     # We find all group members and the other groups they were part of.
     # For each member-group pair, we find some recordings.
@@ -107,7 +119,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
         # Iterate member-group pairs and get some recordings to make Threads
         threads = []
         for mgPair in memberGroupPairs:
-            recs = db.getRecordingsByArtist(mgPair['group'],
+            recs = db.getRecordingsByArtist(mgPair['group'], 
                     select=recsPerMemberGroupPair)
             # Make a Thread for each member-group-recording combination
             for toRec in recs:
@@ -119,14 +131,14 @@ class ThreadByGroupWithMembersInCommon(Thread):
                 toKnot.inThread = newThread
                 threads.append(newThread)
         return threads
-
+    
     def render(self):
         renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
                        self.toGroup.name + ', that had group member ' +\
-                       self.memberInCommon.name + ' in common with  ' +\
+                       self.memberInCommon.name + ' in common with ' +\
                        self.fromGroup.name
         return renderString
-
+    
     # This type of Thread only applies if the artist of the current Knot
     # is a Group
     @staticmethod
@@ -134,6 +146,12 @@ class ThreadByGroupWithMembersInCommon(Thread):
         fromRec = fromKnot.rec
         fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
         return db.isGroup(fromArtist)
+    
+    # Returning a random thread for now
+    @staticmethod
+    def rank(threads, nResults):
+        best = np.random.choice(threads, nResults)
+        return best
 
 """
 ThreadByGroupMemberSoloAct: A song by a group member's solo act
@@ -146,7 +164,7 @@ class ThreadByGroupMemberSoloAct(Thread):
         self.fromGroup = fGroup
         self.memberInCommon = member
         self.memberPerformsAs = mPerformsAs
-
+    
     @staticmethod
     def getAllPossibleThreads(db, fromKnot, recsPerMemberActPair):
         fromRec = fromKnot.rec
@@ -156,7 +174,7 @@ class ThreadByGroupMemberSoloAct(Thread):
         # Iterate acts and get some recordings to make Threads
         threads = []
         for memberAct in memberActs:
-            recs = db.getRecordingsByArtist(memberAct['performsAs'],\
+            recs = db.getRecordingsByArtist(memberAct['performsAs'], 
                     select=recsPerMemberActPair)
             for toRec in recs:
                 toKnot = Knot(toRec, pKnot=fromKnot)
@@ -167,7 +185,7 @@ class ThreadByGroupMemberSoloAct(Thread):
                         memberAct['performsAs'])
                 threads.append(newThread)
         return threads
-
+    
     def render(self):
         renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
                        self.fromGroup.name + ' member ' +\
@@ -175,7 +193,7 @@ class ThreadByGroupMemberSoloAct(Thread):
         if self.memberInCommon.name != self.memberPerformsAs.name:
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString
-
+    
     # This type of Thread only applies if the artist of the current Knot
     # is a Group
     @staticmethod
@@ -183,6 +201,12 @@ class ThreadByGroupMemberSoloAct(Thread):
         fromRec = fromKnot.rec
         fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
         return db.isGroup(fromArtist)
+    
+    # Returning a random thread for now
+    @staticmethod
+    def rank(threads, nResults):
+        best = np.random.choice(threads, nResults)
+        return best
 
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
@@ -193,7 +217,7 @@ class AriadneDB(object):
         engine = create_engine(connString, echo=echo)
         Session = sessionmaker(bind=engine)
         self.sess = Session()
-
+    
     # Runs a query on the DB and returns the desired amount of results
     def queryDB(self, query, select):
         if select == 'ALL':
@@ -205,11 +229,11 @@ class AriadneDB(object):
         else:
             raise ValueError('Bad select value')
         return results 
-
+    
     # Checks whether an Artist is a Group
     def isGroup(self, artist):
         return artist.type.name == 'Group'
-
+    
     # Checks whether an Artist has any recordings credited to them
     def artistHasRecordings(self, artist):
         recordings = self.getRecordingsByArtist(artist, 'FIRST')
@@ -217,29 +241,29 @@ class AriadneDB(object):
             return True
         else:
             return False
-
+    
     # Returns the Artist object(s) linked to a given Recording
+    # Navigate from Artist table to Recording table through Credit tables,
+    # get entries with matching Recording GID
     def getArtistsByRecording(self, rec, select):
-        # Navigate from Artist table to Recording table through Credit tables,
-        # get entries with matching Recording GID
         query = self.sess.query(mb.Artist)\
                          .join(mb.ArtistCreditName)\
                          .join(mb.ArtistCredit)\
                          .join(mb.Recording)\
                          .filter(mb.Recording.gid == rec.gid)
         return self.queryDB(query, select) 
-
+    
     # Returns the Recording object(s) linked to a given Artist
+    # Navigate from Recording table to Artist table through Credit tables,
+    # get entries with matching Artist GID
     def getRecordingsByArtist(self, artist, select):
-        # Navigate from Recording table to Artist table through Credit tables,
-        # get entries with matching Artist GID
         query = self.sess.query(mb.Recording)\
                                 .join(mb.ArtistCredit)\
                                 .join(mb.ArtistCreditName)\
                                 .join(mb.Artist)\
                                 .filter(mb.Artist.gid == artist.gid)
         return self.queryDB(query, select)
-
+    
     # Returns the Person Artist(s) linked to a given Group Artist
     def getMembersByGroup(self, group, select):
         query = self.sess.query(mb.LinkArtistArtist)\
@@ -250,7 +274,7 @@ class AriadneDB(object):
         results = self.queryDB(query, select)
         members = [link.entity0 for link in results]
         return members
-
+    
     # Returns the Group Artist(s) linked to a given Person Artist
     def getGroupsByMember(self, member, select):
         query = self.sess.query(mb.LinkArtistArtist)\
@@ -261,7 +285,7 @@ class AriadneDB(object):
         results = self.queryDB(query, select)
         groups = [link.entity1 for link in results]
         return groups
-
+    
     # Returns the Group Artist(s) with members in common with another Group
     def getGroupsWithMembersInCommon(self, fromGroup):
         groupMembers = self.getMembersByGroup(fromGroup, 'ALL')
@@ -275,7 +299,7 @@ class AriadneDB(object):
                 if group.gid != fromGroup.gid:
                     memberGroupPairs.append({'member': member, 'group': group})
         return memberGroupPairs
-
+    
     # Returns the Artist(s) that a Person performs as
     def getArtistsPersonPerformsAs(self, person, select):
         query = self.sess.query(mb.LinkArtistArtist)\
@@ -321,11 +345,13 @@ class AriadneController(object):
         self.currentKnot = self.startKnot
         self.threads = []
         self.knots = [self.startKnot]
-
-    # Calls the getAllPossibleThreads class method of the applicable Thread
+    
+    # Calls the getAllPossibleThreads method of the applicable Thread
     # types
     def getAllPossibleThreads(self, applicableThreadTypes, select,
-            fromKnot=self.currentKnot):
+            fromKnot=None):
+        if not fromKnot:
+            fromKnot = self.currentKnot
         threads = []
         for ThreadType in applicableThreadTypes:
             thisTypeThreads = ThreadType.getAllPossibleThreads(
@@ -333,7 +359,25 @@ class AriadneController(object):
             threads.append({'type': ThreadType, 'threads': thisTypeThreads})
         return threads
 
-    # Calls the isApplicable() class method on the allowed Thread types
-    def getApplicableThreadTypes(self, fromKnot=self.currentKnot):
+    # Calls the isApplicable() method on the allowed Thread types
+    def getApplicableThreadTypes(self, fromKnot=None):
+        if not fromKnot:
+            fromKnot = self.currentKnot
         return [tType for tType in self.allowedThreads  
                     if tType.isApplicable(self.db, fromKnot)]
+    
+    # Calls the rank() method on the provided Thread types, and returns only
+    # the specified amount of Threads per Thread type.
+    # Expects input threads in the form:
+    # [{'type': ThreadType1, 'threads', [Thread1, Thread2]},
+    #  {'type': ThreadType2, 'threads', [Thread3, Thread4]}]
+    def rank(self, threads, nThreadsPerType):
+        rankedThreads = []
+        for typeThreadPair in threads:
+            thisType = typeThreadPair['type']
+            thisTypeThreads = typeThreadPair['threads']
+            thisTypeRankedThreads = thisType.rank(thisTypeThreads,
+                    nThreadsPerType)
+            for thread in thisTypeRankedThreads:
+                rankedThreads.append(thread)
+        return rankedThreads
