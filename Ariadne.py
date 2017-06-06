@@ -55,6 +55,7 @@ class Thread(object):
 ThreadBySameArtist: two recordings by the same artist
 """
 class ThreadBySameArtist(Thread):
+    descText = 'A song by the same artist'
     # This Thread type additionally stores an Artist object connecting the
     # recordings
     def __init__(self, fKnot, tKnot, artist):
@@ -99,6 +100,7 @@ ThreadByGroupWithMembersInCommon: a recording by a group with a member in common
 with the previous one.
 """
 class ThreadByGroupWithMembersInCommon(Thread):
+    descText = 'A song by a group with a member in common'
     # This Thread type additionally stores the names of both groups, and the
     # name of the group member in common
     def __init__(self, fKnot, tKnot, fGroup, tGroup, member):
@@ -157,6 +159,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
 ThreadByGroupMemberSoloAct: A song by a group member's solo act
 """
 class ThreadByGroupMemberSoloAct(Thread):
+    descText = 'A song by a member of the same band playing solo'
     # This Thread type additionally stores the name of the previous group, the
     # member in common, and the member's performing name (if it applies)
     def __init__(self, fKnot, tKnot, fGroup, member, mPerformsAs=None):
