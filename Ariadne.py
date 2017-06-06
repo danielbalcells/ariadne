@@ -379,8 +379,9 @@ class AriadneController(object):
         for typeThreadPair in threads:
             thisType = typeThreadPair['type']
             thisTypeThreads = typeThreadPair['threads']
-            thisTypeRankedThreads = thisType.rank(thisTypeThreads,
-                    nThreadsPerType)
-            for thread in thisTypeRankedThreads:
-                rankedThreads.append(thread)
+            if thisTypeThreads:
+                thisTypeRankedThreads = thisType.rank(thisTypeThreads,
+                        nThreadsPerType)
+                for thread in thisTypeRankedThreads:
+                    rankedThreads.append(thread)
         return rankedThreads
