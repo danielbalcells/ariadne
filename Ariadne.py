@@ -454,6 +454,12 @@ class AriadneDB(object):
                          .filter(mb.Recording.gid == gid)
         return self.queryDB(query, 'FIRST')
 
+    # Returns the Artist object that has the given GID
+    def getArtistByGID(self, gid):
+        query = self.sess.query(mb.Artist)\
+                         .filter(mb.Artist.gid == gid)
+        return self.queryDB(query, 'FIRST')
+
     # Returns the Artist object(s) linked to a given Recording
     # Navigate from Artist table to Recording table through Credit tables,
     # get entries with matching Recording GID
