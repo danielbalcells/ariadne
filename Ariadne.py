@@ -564,6 +564,20 @@ class AriadneDB(object):
                 acts.append({'member': member, 'performsAs': member})
         return acts
 
+    # Returns the Events where a certain Artist performed.
+    # Optionally, restrict to a certain Event type
+    def getEventsByArtist(self, fromArtist, select, eventTypeNames=[]):
+        query = self.sess.query(mb.LinkArtistEvent)\
+                         .filter(mb.LinkArtistEvent.entity0 == fromArtist)
+        artistEventLinks = self.queryDB(query, select)
+        events=[]
+        for eventTypeName in eventTypeNames:
+            events += [l.entity1 for l in artistEventLinks \
+                        if l.entity1.type.name == eventTypeName]
+        if not eventTypeNames:
+            events = [l.entity1 for l in artistEventLinks]
+        return events
+
 """
 An AriadneController executes the high-level logic behind the Ariadne workflow
 """
