@@ -9,7 +9,7 @@ def getUserThreadChoice(threads):
     threadRenders = [thread.render() for thread in threads]
     threadInts = [i+1 for i in range(len(threads))]
     while not haveChoice:
-        print '\nPossible next songs:'
+        print 'Possible next songs:'
         for i in threadInts:
             print str(i) + ') ' + threadRenders[i-1]
         choice = raw_input('Your choice:\n')
@@ -71,6 +71,8 @@ exitAriadne = False
 while not exitAriadne:
     # Get Thread types that apply for current Knot
     applicableThreadTypes = ctrl.getApplicableThreadTypes()
+    # Print current song
+    print '\nCurrent song: ' + ctrl.currentKnot.render()
     # Get available Threads from current Knot
     possibleThreads = ctrl.getAllPossibleThreads(applicableThreadTypes, 5)
     # Filter possible threads to get the "best" per type (random atm)

@@ -22,6 +22,12 @@ class Knot(object):
         # Knot that led to this Knot through inThread
         self.prevKnot = pKnot
 
+    # Returns a string describing the Knot
+    def render(self):
+        renderString = '"' + self.rec.name + '", by ' +\
+                       self.creditedArtists.render()
+        return renderString
+
 """
 A CreditedArtists object wraps one or many MB Artist objects to which a given 
 Recording is credited
