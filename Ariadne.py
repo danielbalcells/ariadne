@@ -115,7 +115,7 @@ class ThreadBySameArtist(Thread):
     def render(self):
         renderString = '"' + self.toKnot.rec.name + '"' +\
                        ' was also written by ' +\
-                       self.artist.name
+                       self.toKnot.creditedArtists.render()
         return renderString
     
     # A ThreadBySameArtist can be started at any Knot
