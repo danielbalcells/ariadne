@@ -214,7 +214,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
     # Returning a random thread for now
     @staticmethod
     def rank(threads, nResults):
-        best = np.random.choice(threads, nResults)
+        best = np.random.choice(threads, nResults).tolist()
         return best
 
     # Returns a list of Threads given a starting Knot, a list of ending
@@ -296,7 +296,7 @@ class ThreadByGroupMemberSoloAct(Thread):
     # Returning a random thread for now
     @staticmethod
     def rank(threads, nResults):
-        best = np.random.choice(threads, nResults)
+        best = np.random.choice(threads, nResults).tolist()
         return best
 
     # Returns a list of Threads given a starting Knot, a list of Recordings and
@@ -322,6 +322,7 @@ class ThreadByGroupMemberSoloAct(Thread):
 """
 ThreadByGroupPersonIsMemberOf: A song by a band that a person played in
 Reciprocal of ThreadByGroupMemberSoloAct
+"""
 class ThreadByGroupPersonIsMemberOf(Thread):
     descText = 'A song by a band that the same artist was a member of'
     # This Thread type additionally stores the name of the previous person, the
@@ -331,12 +332,80 @@ class ThreadByGroupPersonIsMemberOf(Thread):
         self.fromPerson = fPerson
         self.toGroup = tGroup
         self.memberPerformsAs = mPerformsAs
+    
+    # To get Threads of this type from a given Knot, we take the credited
+    # artists that are Persons or single-Person acts. We get the Groups that
+    # these Persons played in, and get some Recordings from each group. 
+    # For each Person-Group-Recording set, we make a Thread.
+    @staticmethod
+    def getAllPossibleThreads(db, fromKnot, recsPerPersonGroupPair):
+        fromRec = fromKnot.rec
+        fromArtists = [a for a in fromKnot.creditedArtists.artistList \
+                if db.isPerson(a) or db.isSinglePersonAct(a)]
+        threads = []
+        for fromArtist in fromArtists:
+            toGroups = []
+            # Sort out artist and person identities for the link
+            if db.isSinglePersonAct(fromArtist):
+                mPerformsAs = fromArtist
+                fromPerson = db.getPersonBySinglePersonAct(fromArtist)
+                toGroups += db.getGroupsByMember(mPerformsAs, 'ALL')
+            else:
+                mPerformsAs = None
+                fromPerson = fromArtist
+            # Get groups this person played in, get recordings and make threads
+            toGroups += db.getGroupsByMember(fromPerson, 'ALL')
+            for toGroup in toGroups:
+                toRecs = db.getRecordingsByArtist(toGroup,
+                        recsPerPersonGroupPair)
+                thisGroupThreads = ThreadByGroupPersonIsMemberOf.makeThreads(
+                        db, fromKnot, toRecs, fromPerson, toGroup, mPerformsAs)
+                threads += thisGroupThreads
+        return threads
+    
+    def render(self):
+        renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+                self.toGroup.name + '. This band had member ' +\
+            self.fromPerson.name 
+        if self.memberPerformsAs:
+            renderString += ', who performs as ' + self.memberPerformsAs.name
+        return renderString
 
-    #@staticmethod
-    #def getAllPossibleThreads(db, fromKnot, recsPerPersonGroupPair):
-    #    fromRec = fromKnot.rec
-    #    fromGroup =
-"""
+    # This type of Thread only applies if any of the artists of the current Knot
+    # is a Person or a single-Person act
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        fromRec = fromKnot.rec
+        fromArtists = fromKnot.creditedArtists
+        for cArtist in fromArtists.artistList:
+            if db.isPerson(cArtist) or db.isSinglePersonAct(cArtist):
+                return True
+        return False
+
+    # Returning a random thread for now
+    @staticmethod
+    def rank(threads, nResults):
+        best = np.random.choice(threads, nResults).tolist()
+        return best
+
+    # Returns a list of Threads given a starting Knot, a list of Recordings,
+    # and the extra info for each Recording: the name of the Person that links
+    # them, their performing name (if any), and the name of the Group where
+    # they played.
+    @staticmethod
+    def makeThreads(db, fromKnot, toRecs, fromPerson, toGroup, mPerformsAs):
+        threads = []
+        for toRec in toRecs:
+            toCreditedArtistList = db.getArtistsByRecording(toRec, 'ALL')
+            toCreditedArtists = CreditedArtists(toCreditedArtistList)
+            toKnot = Knot(toRec, toCreditedArtists, pKnot=fromKnot)
+            newThread = ThreadByGroupPersonIsMemberOf(fromKnot, toKnot,
+                    fromPerson, toGroup, mPerformsAs)
+            toKnot.inThread = newThread
+            threads.append(newThread)
+        return threads
+
+
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
 useful functions to access it
@@ -363,6 +432,14 @@ class AriadneDB(object):
     def isGroup(self, artist):
         return artist.type.name == 'Group'
     
+    # Checks whether an Artist is a Person
+    def isPerson(self, artist):
+        return artist.type.name == 'Person'
+    
+    # Checkes whether an Artist is a single-Person act
+    def isSinglePersonAct(self, artist):
+        return bool(self.getPersonBySinglePersonAct(artist))
+
     # Checks whether an Artist has any recordings credited to them
     def artistHasRecordings(self, artist):
         recordings = self.getRecordingsByArtist(artist, 'FIRST')
@@ -443,9 +520,26 @@ class AriadneDB(object):
                          .filter(mb.LinkArtistArtist.entity0 == person)\
                          .filter(mb.LinkType.name == 'is person')
         results = self.queryDB(query, select)
-        artists = [link.entity1 for link in results]
+        if results:
+            artists = [link.entity1 for link in results]
+        else:
+            artists = []
         return artists
     
+    # Returns the Person linked to a single-Person Artist
+    def getPersonBySinglePersonAct(self, act):
+        query = self.sess.query(mb.LinkArtistArtist)\
+                         .join(mb.Link)\
+                         .join(mb.LinkType)\
+                         .filter(mb.LinkArtistArtist.entity1 == act)\
+                         .filter(mb.LinkType.name == 'is person')
+        results = self.queryDB(query, 'FIRST')
+        if results:
+            person = results.entity0
+        else:
+            person = None
+        return person
+
     # Returns the Artists that represent solo acts of members of a Group
     # These can be members playing directly under their real name, or
     # single-member acts with a name other than the member's
@@ -516,6 +610,5 @@ class AriadneController(object):
             if thisTypeThreads:
                 thisTypeRankedThreads = thisType.rank(thisTypeThreads,
                         nThreadsPerType)
-                for thread in thisTypeRankedThreads:
-                    rankedThreads.append(thread)
+                rankedThreads += thisTypeRankedThreads
         return rankedThreads
