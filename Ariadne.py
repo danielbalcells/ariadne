@@ -12,13 +12,42 @@ It includes a MB Recording object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
 class Knot(object):
-    def __init__(self, r, iThread=None, pKnot=None):
+    def __init__(self, r, cArtists, iThread=None, pKnot=None):
         # MB Recording object containing the actual music
         self.rec = r
+        # CreditedArtists object
+        self.creditedArtists = cArtists
         # Inbound connection to this Knot
         self.inThread = iThread
         # Knot that led to this Knot through inThread
         self.prevKnot = pKnot
+
+"""
+A CreditedArtists object wraps one or many MB Artist objects to which a given 
+Recording is credited
+"""
+class CreditedArtists(object):
+    def __init__(self, artistList):
+        if type(artistList) is not list:
+            artistList = [artistList]
+        self.artistList = artistList
+    
+    def render(self):
+        renderString = ''
+        nArtists = len(self.artistList)
+        if nArtists == 1:
+            renderString = self.artistList[0].name
+        elif nArtists == 2:
+            renderString = self.artistList[0].name + ' and ' +\
+                    self.artistList[1].name
+        else:
+            renderString = self.artistList[0].name
+            for i in range(1, nArtists-1):
+                renderString += ', ' + self.artistList[i].name
+            renderString += ' and ' + self.artistList[nArtists-1].name
+        return renderString
+
+
 """
 A Thread is a link between two Knots. It wraps one or many MB Links.
 As an abstract class, it is up to the specific implementation of a Thread
@@ -63,19 +92,18 @@ class ThreadBySameArtist(Thread):
         self.artist = artist
     
     # To find all possible threads of this type given a starting recording, we
-    # first find its artist and then get all recordings by that artist.
+    # iterate all credited artists and find some recordings by them
     @staticmethod
-    def getAllPossibleThreads(db, fromKnot, limit=50):
+    def getAllPossibleThreads(db, fromKnot, recsPerCreditedArtist=50):
         fromRec = fromKnot.rec
-        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
-        toRecs = db.getRecordingsByArtist(fromArtist, limit)
-        # Iterate possible recordings, create Threads and append to list
+        fromArtists = fromKnot.creditedArtists
         threads = []
-        for toRec in toRecs:
-            toKnot = Knot(toRec, pKnot=fromKnot)
-            newThread = ThreadBySameArtist(fromKnot, toKnot, fromArtist)
-            toKnot.inThread = newThread
-            threads.append(newThread)
+        for thisArtist in fromArtists.artistList:
+            thisArtistRecs = db.getRecordingsByArtist(thisArtist,
+                    recsPerCreditedArtist)
+            thisArtistThreads = ThreadBySameArtist.makeThreads(db, fromKnot,
+                    thisArtistRecs, thisArtist)
+            threads += thisArtistThreads
         return threads
     
     def render(self):
@@ -89,11 +117,29 @@ class ThreadBySameArtist(Thread):
     def isApplicable(db, fromKnot):
         return True
     
-    # Returning a random thread for now
+    # Returning a random thread per unique artist for now
     @staticmethod
     def rank(threads, nResults):
-        best = np.random.choice(threads, nResults)
+        uniqueArtists = np.unique([t.artist for t in threads])
+        best=[]
+        for thisArtist in uniqueArtists:
+            thisArtistThreads = [t for t in threads if t.artist is thisArtist]
+            best += np.random.choice(thisArtistThreads, nResults).tolist()
         return best
+
+    # Returns a list of Threads given a starting Knot, a list of ending
+    # Recordings and the artist that they share.
+    @staticmethod
+    def makeThreads(db, fromKnot, toRecs, fromArtist):
+        threads = []
+        for toRec in toRecs:
+            toCreditedArtistsList = db.getArtistsByRecording(toRec, 'ALL')
+            toCreditedArtists = CreditedArtists(toCreditedArtistsList)
+            toKnot = Knot(toRec, toCreditedArtists, pKnot=fromKnot)
+            newThread = ThreadBySameArtist(fromKnot, toKnot, fromArtist)
+            toKnot.inThread = newThread
+            threads.append(newThread)
+        return threads
 
 """
 ThreadByGroupWithMembersInCommon: a recording by a group with a member in common
@@ -109,51 +155,79 @@ class ThreadByGroupWithMembersInCommon(Thread):
         self.toGroup = tGroup
         self.memberInCommon = member
     
-    # To get the next threads from a certain Knot, we get its artist (group).
+    # To get the next threads from a certain Knot, we iterate all credited
+    # groups.
     # We find all group members and the other groups they were part of.
     # For each member-group pair, we find some recordings.
     # For each member-group-recording combination, we make a new Thread.
     @staticmethod
-    def getAllPossibleThreads(db, fromKnot, recsPerMemberGroupPair):
+    def getAllPossibleThreads(db, fromKnot, recsPerMemberGroupPair=50):
         fromRec = fromKnot.rec
-        fromGroup = db.getArtistsByRecording(fromRec, 'FIRST')
-        memberGroupPairs = db.getGroupsWithMembersInCommon(fromGroup)
-        # Iterate member-group pairs and get some recordings to make Threads
+        fromArtists = fromKnot.creditedArtists
+        fromGroups = [artist for artist in fromArtists.artistList
+                if db.isGroup(artist)]
         threads = []
-        for mgPair in memberGroupPairs:
-            recs = db.getRecordingsByArtist(mgPair['group'], 
-                    select=recsPerMemberGroupPair)
-            # Make a Thread for each member-group-recording combination
-            for toRec in recs:
-                toKnot = Knot(toRec, pKnot=fromKnot)
-                newThread = ThreadByGroupWithMembersInCommon(
-                        fromKnot, toKnot, 
-                        fromGroup, tGroup=mgPair['group'],
-                        member=mgPair['member'])
-                toKnot.inThread = newThread
-                threads.append(newThread)
+        for fromGroup in fromGroups:
+            memberGroupPairs = db.getGroupsWithMembersInCommon(fromGroup)
+            # Iterate member-group pairs and get some recordings to make Threads
+            for mgPair in memberGroupPairs:
+                toRecs = db.getRecordingsByArtist(mgPair['group'], 
+                        select=recsPerMemberGroupPair)
+                # Make a Thread for each member-group-recording combination
+                thisPairThreads = ThreadByGroupWithMembersInCommon.makeThreads(
+                        db, fromKnot, toRecs, fromGroup, mgPair['group'],
+                        mgPair['member'])
+                threads += thisPairThreads
         return threads
     
     def render(self):
-        renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
+        if len(self.toKnot.creditedArtists.artistList) == 1:
+            renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
                        self.toGroup.name + ', that had group member ' +\
+                       self.memberInCommon.name + ' in common with ' +\
+                       self.fromGroup.name
+        else:
+            renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
+                       self.toKnot.creditedArtists.render() + '. ' +\
+                       self.toGroup.name + ' had group member ' +\
                        self.memberInCommon.name + ' in common with ' +\
                        self.fromGroup.name
         return renderString
     
-    # This type of Thread only applies if the artist of the current Knot
+    # This type of Thread only applies if one of the artists of the current Knot
     # is a Group
     @staticmethod
     def isApplicable(db, fromKnot):
         fromRec = fromKnot.rec
-        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
-        return db.isGroup(fromArtist)
+        fromArtists = fromKnot.creditedArtists
+        for cArtist in fromArtists.artistList:
+            if db.isGroup(cArtist):
+                return True
+        return False
     
     # Returning a random thread for now
     @staticmethod
     def rank(threads, nResults):
         best = np.random.choice(threads, nResults)
         return best
+
+    # Returns a list of Threads given a starting Knot, a list of ending
+    # Recordings and the extra information for each of them: from/to groups and
+    # member in common
+    @staticmethod
+    def makeThreads(db, fromKnot, toRecs, fromGroup, toGroup, member):
+        threads = []
+        for toRec in toRecs:
+            toCreditedArtistsList = db.getArtistsByRecording(toRec, 'ALL')
+            toCreditedArtists = CreditedArtists(toCreditedArtistsList)
+            toKnot = Knot(toRec, toCreditedArtists, pKnot=fromKnot)
+            newThread = ThreadByGroupWithMembersInCommon(
+                    fromKnot, toKnot, 
+                    fromGroup, toGroup,
+                    member)
+            toKnot.inThread = newThread
+            threads.append(newThread)
+        return threads
 
 """
 ThreadByGroupMemberSoloAct: A song by a group member's solo act
@@ -171,28 +245,33 @@ class ThreadByGroupMemberSoloAct(Thread):
     @staticmethod
     def getAllPossibleThreads(db, fromKnot, recsPerMemberActPair):
         fromRec = fromKnot.rec
-        fromGroup = db.getArtistsByRecording(fromRec, 'FIRST')
+        fromArtists = fromKnot.creditedArtists
+        fromGroups = [artist for artist in fromArtists.artistList
+                if db.isGroup(artist)]
         # Get solo Artists related to this Group's members
-        memberActs = db.getMembersSoloActsByGroup(fromGroup)
-        # Iterate acts and get some recordings to make Threads
         threads = []
-        for memberAct in memberActs:
-            recs = db.getRecordingsByArtist(memberAct['performsAs'], 
-                    select=recsPerMemberActPair)
-            for toRec in recs:
-                toKnot = Knot(toRec, pKnot=fromKnot)
-                newThread = ThreadByGroupMemberSoloAct(
-                        fromKnot, toKnot,
-                        fromGroup, 
-                        memberAct['member'],
-                        memberAct['performsAs'])
-                threads.append(newThread)
+        for fromGroup in fromGroups:
+            memberActs = db.getMembersSoloActsByGroup(fromGroup)
+            # Iterate acts and get some recordings to make Threads
+            for memberAct in memberActs:
+                toRecs = db.getRecordingsByArtist(memberAct['performsAs'], 
+                        select=recsPerMemberActPair)
+                thisMemberActThreads = ThreadByGroupMemberSoloAct.makeThreads(
+                        db, fromKnot, toRecs, fromGroup, 
+                        memberAct['member'], memberAct['performsAs'])
+                threads += thisMemberActThreads
         return threads
     
     def render(self):
-        renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
-                       self.fromGroup.name + ' member ' +\
-                       self.memberInCommon.name
+        if len(self.toKnot.creditedArtists.artistList) == 1:
+            renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+                   self.fromGroup.name + ' member ' +\
+                   self.memberInCommon.name
+        else:
+            renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+                   self.toKnot.creditedArtists.artistList.render() + '. ' +\
+                   self.fromGroup.name + ' had member ' +\
+                   self.memberInCommon.name
         if self.memberInCommon.name != self.memberPerformsAs.name:
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString
@@ -202,8 +281,11 @@ class ThreadByGroupMemberSoloAct(Thread):
     @staticmethod
     def isApplicable(db, fromKnot):
         fromRec = fromKnot.rec
-        fromArtist = db.getArtistsByRecording(fromRec, 'FIRST')
-        return db.isGroup(fromArtist)
+        fromArtists = fromKnot.creditedArtists
+        for cArtist in fromArtists.artistList:
+            if db.isGroup(cArtist):
+                return True
+        return False
     
     # Returning a random thread for now
     @staticmethod
@@ -211,6 +293,44 @@ class ThreadByGroupMemberSoloAct(Thread):
         best = np.random.choice(threads, nResults)
         return best
 
+    # Returns a list of Threads given a starting Knot, a list of Recordings and
+    # their respective group, member in common and performing name (if any)
+    @staticmethod
+    def makeThreads(db, fromKnot, toRecs, fromGroup, member, performsAs):
+        threads = []
+        for toRec in toRecs:
+            toCreditedArtistsList = db.getArtistsByRecording(toRec, 'ALL')
+            toCreditedArtists = CreditedArtists(toCreditedArtistsList)
+            toKnot = Knot(toRec, toCreditedArtists, pKnot=fromKnot)
+            newThread = ThreadByGroupMemberSoloAct(
+                    fromKnot, toKnot,
+                    fromGroup, 
+                    member,
+                    performsAs)
+            toKnot.inThread = newThread
+            threads.append(newThread)
+        return threads
+
+
+
+"""
+ThreadByGroupPersonIsMemberOf: A song by a band that a person played in
+Reciprocal of ThreadByGroupMemberSoloAct
+class ThreadByGroupPersonIsMemberOf(Thread):
+    descText = 'A song by a band that the same artist was a member of'
+    # This Thread type additionally stores the name of the previous person, the
+    # name of the band, and the person's performing name (if it applies)
+    def __init__(self, fKnot, tKnot, fPerson, tGroup, mPerformsAs=None):
+        super(ThreadByGroupPersonIsMemberOf, self).__init__(fKnot, tKnot)
+        self.fromPerson = fPerson
+        self.toGroup = tGroup
+        self.memberPerformsAs = mPerformsAs
+
+    #@staticmethod
+    #def getAllPossibleThreads(db, fromKnot, recsPerPersonGroupPair):
+    #    fromRec = fromKnot.rec
+    #    fromGroup =
+"""
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
 useful functions to access it
@@ -245,6 +365,12 @@ class AriadneDB(object):
         else:
             return False
     
+    # Returns the Recording object that has the given GID
+    def getRecordingByGID(self, gid):
+        query = self.sess.query(mb.Recording)\
+                         .filter(mb.Recording.gid == gid)
+        return self.queryDB(query, 'FIRST')
+
     # Returns the Artist object(s) linked to a given Recording
     # Navigate from Artist table to Recording table through Credit tables,
     # get entries with matching Recording GID
@@ -343,8 +469,10 @@ class AriadneController(object):
     def __init__(self, db, sRec, aThreads):
         self.db = db
         self.startRec = sRec
+        recCreditedArtistsList = db.getArtistsByRecording(sRec, 'ALL')
+        recCreditedArtists = CreditedArtists(recCreditedArtistsList)
         self.allowedThreads = aThreads
-        self.startKnot = Knot(self.startRec)
+        self.startKnot = Knot(self.startRec, recCreditedArtists)
         self.currentKnot = self.startKnot
         self.threads = []
         self.knots = [self.startKnot]
