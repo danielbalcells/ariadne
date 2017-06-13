@@ -426,6 +426,11 @@ class ThreadByArtistWithFestivalInCommon(Thread):
     #   For each Artist, we:
     #       Get some recordings by this Artist
     #       Make Threads
+    # Note: we only take the Artists that played in the same minor Event 
+    # (e.g. same day, same stage or the same festival) because they're arguably
+    # closer than the other Artists on other stages or days of the same
+    # festival. However, to avoid visual clutter we display the name of the
+    # major Event (e.g. the name of the full festival)
     @staticmethod
     def getAllPossibleThreads(db, fromKnot, recsPerArtist):
         fromRec = fromKnot.rec
@@ -435,6 +440,7 @@ class ThreadByArtistWithFestivalInCommon(Thread):
             thisArtistFestivals = db.getEventsByArtist(fromArtist, 'ALL',
                 ['Festival'])
             for festival in thisArtistFestivals:
+                majorFestival = db.getLargestEventByPart(festival)
                 thisFestivalArtists = db.getArtistsByEvent(festival, 'ALL')
                 thisFestivalArtists = [a for a in thisFestivalArtists \
                                         if a is not fromArtist]
@@ -445,7 +451,7 @@ class ThreadByArtistWithFestivalInCommon(Thread):
                         ThreadByArtistWithFestivalInCommon.makeThreads( 
                                 db,
                                 fromKnot, toRecs, 
-                                fromArtist, festivalArtist, festival)
+                                fromArtist, festivalArtist, majorFestival)
                     threads += thisArtistThreads
         return threads
 
@@ -668,6 +674,33 @@ class AriadneDB(object):
         artistEventLinks = self.queryDB(query, select)
         artists = [l.entity0 for l in artistEventLinks]
         return artists
+
+    # Returns the highest order Event that an Event was part of
+    # (e.g. Festival > Day > Stage, get Festival by Stage)
+    def getLargestEventByPart(self, fromEvent):
+        largerEvent = self.getEventByPart(fromEvent)
+        haveLargestEvent = False
+        candidateEvent = fromEvent
+        while not haveLargestEvent:
+            if not largerEvent:
+                largestEvent = candidateEvent
+                haveLargestEvent = True
+            else:
+                candidateEvent = largerEvent
+                largerEvent = self.getEventByPart(largerEvent)
+        return largestEvent
+
+    # Returns the Event that a given Event is immediately part of
+    # (e.g. Festival > Day > Stage, get Day by Stage or Festival by Day)
+    def getEventByPart(self, fromEvent):
+        link =  self.sess.query(mb.LinkEventEvent)\
+                    .filter(mb.LinkEventEvent.entity1 == fromEvent)\
+                    .first()
+        if link:
+            return link.entity0
+        else:
+            return None
+
 
 """
 An AriadneController executes the high-level logic behind the Ariadne workflow
