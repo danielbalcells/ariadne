@@ -759,5 +759,174 @@ class AriadneController(object):
 
     # Sets the currentKnot to the Knot at the given index of the knots list
     def moveCurrentKnot(self, newKnotIndex):
-        self.currentKnot = knots[newKnotIndex]
+        self.currentKnot = self.knots[newKnotIndex]
         return self.currentKnot
+
+"""
+AriadneClientCLI: a command-line interface to run the Ariadne workflow
+"""
+class AriadneClientCLI(object):
+    def __init__(self, conn_string_path='conn_strings.yml',
+            possibleThreadsPerThreadType=5,
+            rankedThreadsPerThreadType=1):
+        conn_string = self.loadConnString(conn_string_path)
+        self.db = AriadneDB(conn_string, False)
+        self.runAriadne = True
+        self.possibleThreadsPerThreadType = possibleThreadsPerThreadType
+        self.rankedThreadsPerThreadType = rankedThreadsPerThreadType
+    
+    # Main method of the client
+    def run(self):
+        # Get starting Recording from user
+        startingRec = self.inputRecording(self.db)
+        # Get allowed Thread types from user
+        allowedThreadTypes = self.getAllowedThreadTypes()
+        # Initialize AriadneController
+        self.ctrl = AriadneController(self.db, startingRec, allowedThreadTypes)
+        # Loop main logic
+        while self.runAriadne:
+            # Get next step: follow Thread, refresh Threads, or move to a
+            # previous Knot
+            self.doStep()
+    
+    # Run a step of the Ariadne workflow: get Threads, get user input, act
+    def doStep(self):
+        # Get best Threads at current Knot
+        bestThreads = self.getBestThreads()
+        # Get user choice on next step
+        choice, nOptions = self.getStepChoice(bestThreads)
+        # Act accordingly
+        if choice == nOptions-1: # Quit Ariadne
+            self.runAriadne = False
+            return
+        elif choice == nOptions-2: # Move to another Knot
+            moveToInd = self.getKnotToMove()
+            self.ctrl.moveCurrentKnot(moveToInd)
+            return
+        elif choice == nOptions-3: # Refresh list of Threads
+            return
+        else: # Follow Thread
+            self.followThread(bestThreads[choice])
+            return
+
+    # Get user's choice on the next step
+    def getStepChoice(self, bestThreads):
+        # Make list of options
+        options = [t.render() for t in bestThreads]
+        options += ['Refresh possible next songs',
+                    'Move to a previous song',
+                    'Quit']
+        # Get user input
+        preListStr = 'Current song: ' + self.ctrl.currentKnot.render()
+        postListStr = 'Your choice:'
+        choice = self.getSingleChoice(options, preListStr, postListStr)
+        return choice, len(options)
+
+    # Get user's choice on what previously explored Knot to move to
+    def getKnotToMove(self):
+        # Make list of options
+        options = [k.render() for k in self.ctrl.knots]
+        # Get user's choice
+        preListStr = 'Previously visited songs:'
+        postListStr = 'Your choice:'
+        choice = self.getSingleChoice(options, preListStr, postListStr)
+        return choice
+    
+    # Updates the Controller to follow a given Thread
+    def followThread(self, thread):
+        self.ctrl.knots.append(thread.toKnot)
+        self.ctrl.currentKnot = thread.toKnot
+
+    # Loads the YAML file with the connection strings
+    def loadConnString(self, conn_string_path):
+        with open(conn_string_path, 'r') as stream:
+            conn_strings = yaml.load(stream)
+        return conn_strings['alchemy_string']
+    
+    # Asks the user for a Recording by GID
+    def inputRecording(self, db):
+        defaultRecID = '084a24a9-b289-4584-9fb5-1ca0f7500eb3'
+        haveValidRecordingID = False
+        while not haveValidRecordingID:
+            recID = raw_input('Enter MBID of a Recording'+\
+                    '(type default for Californication):\n')
+            if recID == 'default':
+                recID = defaultRecID
+            inputRec = db.getRecordingByGID(recID)
+            if inputRec:
+                haveValidRecordingID = True
+            else:
+                print('Bad input!') 
+        return inputRec
+    
+    # Asks the user for the Thread types they want
+    def getAllowedThreadTypes(self):
+       # Get text descriptions for each Thread type
+       threadTypes = Thread.__subclasses__()
+       threadTypeDescs = [tType.descText for tType in threadTypes]
+       # Get user's choice from the list of Thread types
+       preListText = 'Available Thread types:'
+       postListText = 'Enter the numbers of the types you want to use:'
+       allowedThreadTypesInds = self.getMultipleChoice(threadTypeDescs,
+                                preListText,
+                                postListText)
+       allowedThreadTypes = [threadTypes[i] for i in allowedThreadTypesInds]
+       return allowedThreadTypes
+
+    # Gets the user's choices from a list of strings
+    def getMultipleChoice(self, stringList, preListText, postListText):
+        # Items are presented with numbers 1-N
+        listInts = [i+1 for i in range(len(stringList))]
+        haveChoice = False
+        while not haveChoice:
+            print '\n' + preListText
+            for i in listInts:
+                print str(i) + ') ' + stringList[i-1]
+            choicesStr = raw_input('\n' + postListText + '\n')
+            # If the input is correct (i.e. only numerical), get indices in
+            # string list from the ints the user input
+            if choicesStr.replace(' ','').isdigit():
+                haveChoice = True
+                inputChars = [c for c in choicesStr]
+                # Only keep inds in the right range
+                goodChars = [c for c in inputChars if int(c) in listInts]
+                inds = [int(c)-1 for c in goodChars]
+            else:
+                print('Bad input!')
+        return inds
+
+    # Gets the user's choices from a list of strings
+    def getSingleChoice(self, stringList, preListText, postListText):
+        # Items are presented with numbers 1-N
+        listInts = [i+1 for i in range(len(stringList))]
+        haveChoice = False
+        while not haveChoice:
+            print '\n' + preListText
+            for i in listInts:
+                print str(i) + ') ' + stringList[i-1]
+            choiceStr = raw_input('\n' + postListText + '\n')
+            # If the input is correct (i.e. only numerical and in the right
+            # range), get the matching index
+            if choiceStr.isdigit() and int(choiceStr) in listInts:
+                haveChoice = True
+                ind = int(choiceStr)-1
+            else:
+                print('Bad input!')
+        return ind
+
+    # Gets the best Threads starting at a certain Knot
+    def getBestThreads(self, fromKnot=None):
+        if not fromKnot:
+            fromKnot = self.ctrl.currentKnot
+        # Get Thread types that apply for current Knot
+        applicableThreadTypes = self.ctrl.getApplicableThreadTypes(fromKnot)
+        # Get Threads available from current Knot
+        possibleThreads = self.ctrl.getAllPossibleThreads(
+                applicableThreadTypes,
+                self.possibleThreadsPerThreadType,
+                fromKnot)
+        # Filter possible Threads to get the "best" per type (random atm)
+        bestThreads = self.ctrl.rank(possibleThreads,
+                self.rankedThreadsPerThreadType)
+        return bestThreads
+
