@@ -26,7 +26,7 @@ class Knot(object):
     def render(self):
         renderString = '"' + self.rec.name + '", by ' +\
                        self.creditedArtists.render()
-        return renderString
+        return renderString.encode('utf-8')
 
 """
 A CreditedArtists object wraps one or many MB Artist objects to which a given 
@@ -51,7 +51,7 @@ class CreditedArtists(object):
             for i in range(1, nArtists-1):
                 renderString += ', ' + self.artistList[i].name
             renderString += ' and ' + self.artistList[nArtists-1].name
-        return renderString
+        return renderString.encode('utf-8')
 
 
 """
@@ -116,7 +116,7 @@ class ThreadBySameArtist(Thread):
         renderString = '"' + self.toKnot.rec.name + '"' +\
                        ', also by ' +\
                        self.toKnot.creditedArtists.render()
-        return renderString
+        return renderString.encode('utf-8')
     
     # A ThreadBySameArtist can be started at any Knot
     @staticmethod
@@ -198,7 +198,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
                        self.toGroup.name + ' had group member ' +\
                        self.memberInCommon.name + ' in common with ' +\
                        self.fromGroup.name
-        return renderString
+        return renderString.encode('utf-8')
     
     # This type of Thread only applies if one of the artists of the current Knot
     # is a Group
@@ -280,7 +280,7 @@ class ThreadByGroupMemberSoloAct(Thread):
                    self.memberInCommon.name
         if self.memberInCommon.name != self.memberPerformsAs.name:
             renderString += ', who performs as ' + self.memberPerformsAs.name
-        return renderString
+        return renderString.encode('utf-8')
     
     # This type of Thread only applies if the artist of the current Knot
     # is a Group
@@ -369,7 +369,7 @@ class ThreadByGroupPersonIsMemberOf(Thread):
             self.fromPerson.name 
         if self.memberPerformsAs:
             renderString += ', who performs as ' + self.memberPerformsAs.name
-        return renderString
+        return renderString.encode('utf-8')
 
     # This type of Thread only applies if any of the artists of the current Knot
     # is a Person or a single-Person act
@@ -464,7 +464,7 @@ class ThreadByArtistWithFestivalInCommon(Thread):
             renderString += self.toArtist.name + ', who '
         renderString += 'played in festival ' + self.festival.name +\
             ' with ' + self.fromArtist.name
-        return renderString
+        return renderString.encode('utf-8')
 
     # This type of Thread is applicable for any Artist
     @staticmethod
