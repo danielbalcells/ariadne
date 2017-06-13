@@ -74,7 +74,7 @@ while not exitAriadne:
     # Print current song
     print '\nCurrent song: ' + ctrl.currentKnot.render()
     # Get available Threads from current Knot
-    possibleThreads = ctrl.getAllPossibleThreads(applicableThreadTypes, 5)
+    possibleThreads = ctrl.getAllPossibleThreads(applicableThreadTypes, 3)
     # Filter possible threads to get the "best" per type (random atm)
     bestThreads = ctrl.rank(possibleThreads, 1)
     # Get user input to choose a Thread
