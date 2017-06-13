@@ -275,7 +275,7 @@ class ThreadByGroupMemberSoloAct(Thread):
                    self.memberInCommon.name
         else:
             renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
-                   self.toKnot.creditedArtists.artistList.render() + '. ' +\
+                   self.toKnot.creditedArtists.render() + '. ' +\
                    self.fromGroup.name + ' had member ' +\
                    self.memberInCommon.name
         if self.memberInCommon.name != self.memberPerformsAs.name:
@@ -404,6 +404,89 @@ class ThreadByGroupPersonIsMemberOf(Thread):
             toKnot.inThread = newThread
             threads.append(newThread)
         return threads
+
+"""
+ThreadByArtistWithEventInCommon: a song by an artist that played in the same
+event as the previous one
+"""
+class ThreadByArtistWithFestivalInCommon(Thread):
+    descText = 'A song by an artist that played in the same festival'
+    # This Thread type additionally stores the two artists, and the event in
+    # common
+    def __init__(self, fKnot, tKnot, fArtist, tArtist, festival):
+        super(ThreadByArtistWithFestivalInCommon, self).__init__(fKnot, tKnot)
+        self.fromArtist = fArtist
+        self.toArtist = tArtist
+        self.festival = festival
+
+    # To get all possible Threads, we:
+    # Get all Festivals this Artist played in
+    # For each Festival, we:
+    #   Get all Artists that played in the same Festival
+    #   For each Artist, we:
+    #       Get some recordings by this Artist
+    #       Make Threads
+    @staticmethod
+    def getAllPossibleThreads(db, fromKnot, recsPerArtist):
+        fromRec = fromKnot.rec
+        fromArtists = fromKnot.creditedArtists
+        threads = []
+        for fromArtist in fromArtists.artistList:
+            thisArtistFestivals = db.getEventsByArtist(fromArtist, 'ALL',
+                ['Festival'])
+            for festival in thisArtistFestivals:
+                thisFestivalArtists = db.getArtistsByEvent(festival, 'ALL')
+                thisFestivalArtists = [a for a in thisFestivalArtists \
+                                        if a is not fromArtist]
+                for festivalArtist in thisFestivalArtists:
+                    toRecs = db.getRecordingsByArtist(festivalArtist,
+                            recsPerArtist)
+                    thisArtistThreads = \
+                        ThreadByArtistWithFestivalInCommon.makeThreads( 
+                                db,
+                                fromKnot, toRecs, 
+                                fromArtist, festivalArtist, festival)
+                    threads += thisArtistThreads
+        return threads
+
+    def render(self):
+        renderString = '"' + self.toKnot.rec.name + '" was written by '
+        if len(self.toKnot.creditedArtists.artistList) > 1:
+            renderString += self.toKnot.creditedArtists.render() + '. ' +\
+                self.toArtist.name
+        else:
+            renderString += self.toArtist.name + ', who '
+        renderString += 'played in festival ' + self.festival.name +\
+            ' with ' + self.fromArtist.name
+        return renderString
+
+    # This type of Thread is applicable for any Artist
+    @staticmethod
+    def isApplicable(db, fromKnot):
+        return True
+
+    # Returning a random thread for now
+    @staticmethod
+    def rank(threads, nResults):
+        best = np.random.choice(threads, nResults).tolist()
+        return best
+
+    # Returns a list of Threads given a starting Knot, a list of Recordings and
+    # the additional info: starting and ending Artists and the Festival Event
+    # in which they both played.
+    @staticmethod
+    def makeThreads(db, fromKnot, toRecs, fArtist, tArtist, festival):
+        threads = []
+        for toRec in toRecs:
+            toCreditedArtistList = db.getArtistsByRecording(toRec, 'ALL')
+            toCreditedArtists = CreditedArtists(toCreditedArtistList)
+            toKnot = Knot(toRec, toCreditedArtists, pKnot=fromKnot)
+            thisThread = ThreadByArtistWithFestivalInCommon( 
+                    fromKnot, toKnot, fArtist, tArtist, festival)
+            threads.append(thisThread)
+        return threads
+
+
 
 
 """
@@ -574,9 +657,17 @@ class AriadneDB(object):
         for eventTypeName in eventTypeNames:
             events += [l.entity1 for l in artistEventLinks \
                         if l.entity1.type.name == eventTypeName]
-        if not eventTypeNames:
+        if events and not eventTypeNames:
             events = [l.entity1 for l in artistEventLinks]
         return events
+
+    # Returns the Artists that performed at a certain Event.
+    def getArtistsByEvent(self, fromEvent, select):
+        query = self.sess.query(mb.LinkArtistEvent)\
+                         .filter(mb.LinkArtistEvent.entity1 == fromEvent)
+        artistEventLinks = self.queryDB(query, select)
+        artists = [l.entity0 for l in artistEventLinks]
+        return artists
 
 """
 An AriadneController executes the high-level logic behind the Ariadne workflow
