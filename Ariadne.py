@@ -757,4 +757,7 @@ class AriadneController(object):
                 rankedThreads += thisTypeRankedThreads
         return rankedThreads
 
-    
+    # Sets the currentKnot to the Knot at the given index of the knots list
+    def moveCurrentKnot(self, newKnotIndex):
+        self.currentKnot = knots[newKnotIndex]
+        return self.currentKnot
