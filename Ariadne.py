@@ -114,7 +114,7 @@ class ThreadBySameArtist(Thread):
     
     def render(self):
         renderString = '"' + self.toKnot.rec.name + '"' +\
-                       ' was also written by ' +\
+                       ', also by ' +\
                        self.toKnot.creditedArtists.render()
         return renderString
     
@@ -188,12 +188,12 @@ class ThreadByGroupWithMembersInCommon(Thread):
     
     def render(self):
         if len(self.toKnot.creditedArtists.artistList) == 1:
-            renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
+            renderString = '"' + self.toKnot.rec.name + '" by ' + \
                        self.toGroup.name + ', that had group member ' +\
                        self.memberInCommon.name + ' in common with ' +\
                        self.fromGroup.name
         else:
-            renderString = '"' + self.toKnot.rec.name + '" was written by ' + \
+            renderString = '"' + self.toKnot.rec.name + '" by ' + \
                        self.toKnot.creditedArtists.render() + '. ' +\
                        self.toGroup.name + ' had group member ' +\
                        self.memberInCommon.name + ' in common with ' +\
@@ -270,11 +270,11 @@ class ThreadByGroupMemberSoloAct(Thread):
     
     def render(self):
         if len(self.toKnot.creditedArtists.artistList) == 1:
-            renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+            renderString = '"' + self.toKnot.rec.name + '" by ' +\
                    self.fromGroup.name + ' member ' +\
                    self.memberInCommon.name
         else:
-            renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+            renderString = '"' + self.toKnot.rec.name + '" by ' +\
                    self.toKnot.creditedArtists.render() + '. ' +\
                    self.fromGroup.name + ' had member ' +\
                    self.memberInCommon.name
@@ -364,7 +364,7 @@ class ThreadByGroupPersonIsMemberOf(Thread):
         return threads
     
     def render(self):
-        renderString = '"' + self.toKnot.rec.name + '" was written by ' +\
+        renderString = '"' + self.toKnot.rec.name + '" by ' +\
                 self.toGroup.name + '. This band had member ' +\
             self.fromPerson.name 
         if self.memberPerformsAs:
@@ -456,10 +456,10 @@ class ThreadByArtistWithFestivalInCommon(Thread):
         return threads
 
     def render(self):
-        renderString = '"' + self.toKnot.rec.name + '" was written by '
+        renderString = '"' + self.toKnot.rec.name + '" by '
         if len(self.toKnot.creditedArtists.artistList) > 1:
             renderString += self.toKnot.creditedArtists.render() + '. ' +\
-                self.toArtist.name
+                self.toArtist.name + ' '
         else:
             renderString += self.toArtist.name + ', who '
         renderString += 'played in festival ' + self.festival.name +\
@@ -756,3 +756,5 @@ class AriadneController(object):
                         nThreadsPerType)
                 rankedThreads += thisTypeRankedThreads
         return rankedThreads
+
+    
