@@ -493,8 +493,6 @@ class ThreadByArtistWithFestivalInCommon(Thread):
         return threads
 
 
-
-
 """
 An AriadneDB wraps the connection to the MusicBrainz database and provides
 useful functions to access it
