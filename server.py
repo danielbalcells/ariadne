@@ -28,4 +28,4 @@ def worker():
 
 if __name__ == '__main__':
 	# run!
-	app.run()
+	app.run("0.0.0.0", "5010")

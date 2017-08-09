@@ -836,7 +836,8 @@ class AriadneClientCLI(object):
         self.ctrl.currentKnot = thread.toKnot
 
     # Loads the YAML file with the connection strings
-    def loadConnString(self, conn_string_path):
+    @staticmethod
+    def loadConnString(conn_string_path):
         with open(conn_string_path, 'r') as stream:
             conn_strings = yaml.load(stream)
         return conn_strings['alchemy_string']
@@ -928,3 +929,38 @@ class AriadneClientCLI(object):
                 self.rankedThreadsPerThreadType)
         return bestThreads
 
+"""
+AriadneBackend: implements the server-side logic, relying on client-side actions
+to update the controller status
+"""
+class AriadneBackend(object):
+    def __init__(self,
+            conn_string_path='conn_strings.yml',
+            possibleThreadsPerThreadType=1,
+            rankedThreadsPerThreadType=1,
+            allowedThreadTypes=Thread.__subclasses__()):
+        # Load DB connection details
+        conn_string = AriadneClientCLI.loadConnString(conn_string_path)
+        # Init DB connection
+        self.db = AriadneDB(conn_string, False)
+        self.possibleThreadsPerThreadType = possibleThreadsPerThreadType
+        self.rankedThreadsPerThreadType = rankedThreadsPerThreadType
+        self.allowedThreadTypes = allowedThreadTypes
+        self.haveStartingRec = False
+
+    def inputRecording(self, recID):
+        defaultRecID = '084a24a9-b289-4584-9fb5-1ca0f7500eb3'
+        if recID == 'default':
+            recID = defaultRecID
+        inputRec = self.db.getRecordingByGID(recID)
+        if not inputRec:
+            raise Exception('Wrong MBID')
+        return inputRec
+
+    # Main method of the workflow
+    def run(self, inputRecID):
+        # Get starting Recording from user
+        startingRec = self.inputRecording(inputRecID)
+        # Initialize AriadneController
+        self.ctrl = AriadneController(self.db, startingRec, self.allowedThreadTypes)
+    
