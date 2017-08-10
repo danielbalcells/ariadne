@@ -47,5 +47,18 @@ def inputRecording():
     else:
         return 'To be implemented'
 
+# Returns the best Threads starting at the current Knot
+@app.route('/get-best-threads', methods=['POST'])
+def getBestThreads():
+    try:
+        data = request.get_json()
+        bestThreads = backend.getBestThreads()
+        serializedThreads = [t.serialize() for t in bestThreads]
+        result = json.dumps(serializedThreads)
+    except Exception as e:
+        result = e.message
+
+    return result
+
 if __name__ == '__main__':
     app.run(ARIADNE_IP, ARIADNE_PORT)

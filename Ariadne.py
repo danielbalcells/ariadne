@@ -4,6 +4,7 @@ import mbdata.models as mb
 import pandas as pd
 import yaml
 import numpy as np
+import json
 
 """
 A Knot is one point in the music exploration. 
@@ -27,6 +28,16 @@ class Knot(object):
         renderString = '"' + self.rec.name + '", by ' +\
                        self.creditedArtists.render()
         return renderString.encode('utf-8')
+
+    # Serialize object data into struct to be parsed for JSON encoding
+    def serialize(self):
+        struct = {
+                'type': 'Knot',
+                'recName': self.rec.name,
+                'recGID': self.rec.gid,
+                'creditedArtists': self.creditedArtists.render()
+                }
+        return struct
 
 """
 A CreditedArtists object wraps one or many MB Artist objects to which a given 
@@ -75,6 +86,10 @@ class Thread(object):
     def render(self):
         raise NotImplementedError("Should have implemented this")
     
+    # Serializes Thread data to be encoded as JSON
+    def serialize(self):
+        raise NotImplementedError("Should have implemented this")
+
     # Determines whether a Thread can be started from a given Knot
     @staticmethod
     def isApplicable(db, fromKnot):
@@ -118,6 +133,15 @@ class ThreadBySameArtist(Thread):
                        self.toKnot.creditedArtists.render()
         return renderString.encode('utf-8')
     
+    def serialize(self):
+        struct = {
+                'type': 'ThreadBySameArtist',
+                'fromKnot': self.fromKnot.serialize(),
+                'toKnot': self.toKnot.serialize(),
+                'artist': self.artist.name
+                }
+        return struct
+
     # A ThreadBySameArtist can be started at any Knot
     @staticmethod
     def isApplicable(db, fromKnot):
@@ -200,6 +224,17 @@ class ThreadByGroupWithMembersInCommon(Thread):
                        self.fromGroup.name
         return renderString.encode('utf-8')
     
+    def serialize(self):
+        struct = {
+                'type': 'ThreadByGroupWithMembersInCommon',
+                'fromKnot': self.fromKnot.serialize(),
+                'toKnot': self.toKnot.serialize(),
+                'fromGroup': self.fromGroup.name,
+                'toGroup': self.toGroup.name,
+                'memberInCommon': self.memberInCommon.name
+                }
+        return struct
+
     # This type of Thread only applies if one of the artists of the current Knot
     # is a Group
     @staticmethod
@@ -282,6 +317,21 @@ class ThreadByGroupMemberSoloAct(Thread):
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString.encode('utf-8')
     
+    def serialize(self):
+        struct = {
+                'type': 'ThreadByGroupMemberSoloAct',
+                'fromKnot': self.fromKnot.serialize(),
+                'toKnot': self.toKnot.serialize(),
+                'fromGroup': self.fromGroup.name,
+                'memberInCommon': self.memberInCommon.name
+                }
+        if self.memberPerformsAs:
+            struct['memberPerformsAs'] = self.memberPerformsAs.name
+        else:
+            struct['memberPerformsAs'] = ''
+        return struct
+        return struct
+
     # This type of Thread only applies if the artist of the current Knot
     # is a Group
     @staticmethod
@@ -371,6 +421,20 @@ class ThreadByGroupPersonIsMemberOf(Thread):
             renderString += ', who performs as ' + self.memberPerformsAs.name
         return renderString.encode('utf-8')
 
+    def serialize(self):
+        struct = {
+                'type': 'ThreadByGroupPersonIsMemberOf',
+                'fromKnot': self.fromKnot.serialize(),
+                'toKnot': self.toKnot.serialize(),
+                'fromPerson': self.fromPerson.name,
+                'toGroup': self.toGroup.name,
+                }
+        if self.memberPerformsAs:
+            struct['memberPerformsAs'] = self.memberPerformsAs.name
+        else:
+            struct['memberPerformsAs'] = ''
+        return struct
+
     # This type of Thread only applies if any of the artists of the current Knot
     # is a Person or a single-Person act
     @staticmethod
@@ -406,7 +470,7 @@ class ThreadByGroupPersonIsMemberOf(Thread):
         return threads
 
 """
-ThreadByArtistWithEventInCommon: a song by an artist that played in the same
+ThreadByArtistWithFestivalInCommon: a song by an artist that played in the same
 event as the previous one
 """
 class ThreadByArtistWithFestivalInCommon(Thread):
@@ -465,6 +529,17 @@ class ThreadByArtistWithFestivalInCommon(Thread):
         renderString += 'played in festival ' + self.festival.name +\
             ' with ' + self.fromArtist.name
         return renderString.encode('utf-8')
+
+    def serialize(self):
+        struct = {
+                'type': 'ThreadByArtistWithFestivalInCommon',
+                'fromKnot': self.fromKnot.serialize(),
+                'toKnot': self.toKnot.serialize(),
+                'fromArtist': self.fromArtist.name,
+                'toArtist': self.toArtist.name,
+                'festival': self.festival.name
+                }
+        return struct
 
     # This type of Thread is applicable for any Artist
     @staticmethod
@@ -964,3 +1039,18 @@ class AriadneBackend(object):
         # Initialize AriadneController
         self.ctrl = AriadneController(self.db, startingRec, self.allowedThreadTypes)
     
+    # Gets the best Threads starting at a certain Knot
+    def getBestThreads(self, fromKnot=None):
+        if not fromKnot:
+            fromKnot = self.ctrl.currentKnot
+        # Get Thread types that apply for current Knot
+        applicableThreadTypes = self.ctrl.getApplicableThreadTypes(fromKnot)
+        # Get Threads available from current Knot
+        possibleThreads = self.ctrl.getAllPossibleThreads(
+                applicableThreadTypes,
+                self.possibleThreadsPerThreadType,
+                fromKnot)
+        # Filter possible Threads to get the "best" per type (random atm)
+        bestThreads = self.ctrl.rank(possibleThreads,
+                self.rankedThreadsPerThreadType)
+        return bestThreads
