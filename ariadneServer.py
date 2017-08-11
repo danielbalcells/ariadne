@@ -48,13 +48,44 @@ def inputRecording():
         return 'To be implemented'
 
 # Returns the best Threads starting at the current Knot
-@app.route('/get-best-threads', methods=['POST'])
+@app.route('/get-best-threads', methods=['POST', 'GET'])
 def getBestThreads():
     try:
-        data = request.get_json()
-        bestThreads = backend.getBestThreads()
-        serializedThreads = [t.serialize() for t in bestThreads]
+        backend.updateBestThreads()
+        serializedThreads = [t.serialize() for t in backend.bestThreads]
         result = json.dumps(serializedThreads)
+    except Exception as e:
+        result = e.message
+
+    return result
+
+# Takes a Thread ID and updates the backend to follow it
+@app.route('/follow-thread', methods=['POST'])
+def followThread():
+    try:
+        data = request.get_json()
+        threadID = int(data['ThreadID'])
+        backend.followThread(threadID)
+        result = 'Followed thread #' + str(threadID)
+    except Exception as e:
+        result = e.message
+
+    return result
+
+# Returns a list of the visited Knots
+@app.route('/get-visited-knots', methods=['POST'])
+def getVisitedKnots():
+    serializedKnots = [k.serialize() for k in backend.ctrl.knots]
+    return json.dumps(serializedKnots)
+
+# Takes a Knot ID and updates the backend to set it as current Knot
+@app.route('/move-current-knot', methods=['POST'])
+def moveCurrentKnot():
+    try:
+        data = request.get_json()
+        knotID = int(data['KnotID'])
+        backend.moveCurrentKnot(knotID)
+        result = 'Moved to Knot #' + str(knotID)
     except Exception as e:
         result = e.message
 

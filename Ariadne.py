@@ -13,7 +13,7 @@ It includes a MB Recording object, and Knot and Thread objects referring to the
 previous recording and how it led to this one.
 """
 class Knot(object):
-    def __init__(self, r, cArtists, iThread=None, pKnot=None):
+    def __init__(self, r, cArtists, iThread=None, pKnot=None, knotID=-1):
         # MB Recording object containing the actual music
         self.rec = r
         # CreditedArtists object
@@ -22,6 +22,8 @@ class Knot(object):
         self.inThread = iThread
         # Knot that led to this Knot through inThread
         self.prevKnot = pKnot
+        # ID if Knot has been used
+        self.id = knotID
 
     # Returns a string describing the Knot
     def render(self):
@@ -35,7 +37,8 @@ class Knot(object):
                 'type': 'Knot',
                 'recName': self.rec.name,
                 'recGID': self.rec.gid,
-                'creditedArtists': self.creditedArtists.render()
+                'creditedArtists': self.creditedArtists.render(),
+                'id': self.id
                 }
         return struct
 
@@ -138,6 +141,7 @@ class ThreadBySameArtist(Thread):
                 'type': 'ThreadBySameArtist',
                 'fromKnot': self.fromKnot.serialize(),
                 'toKnot': self.toKnot.serialize(),
+                'id': self.id,
                 'artist': self.artist.name
                 }
         return struct
@@ -229,6 +233,7 @@ class ThreadByGroupWithMembersInCommon(Thread):
                 'type': 'ThreadByGroupWithMembersInCommon',
                 'fromKnot': self.fromKnot.serialize(),
                 'toKnot': self.toKnot.serialize(),
+                'id': self.id,
                 'fromGroup': self.fromGroup.name,
                 'toGroup': self.toGroup.name,
                 'memberInCommon': self.memberInCommon.name
@@ -322,6 +327,7 @@ class ThreadByGroupMemberSoloAct(Thread):
                 'type': 'ThreadByGroupMemberSoloAct',
                 'fromKnot': self.fromKnot.serialize(),
                 'toKnot': self.toKnot.serialize(),
+                'id': self.id,
                 'fromGroup': self.fromGroup.name,
                 'memberInCommon': self.memberInCommon.name
                 }
@@ -426,6 +432,7 @@ class ThreadByGroupPersonIsMemberOf(Thread):
                 'type': 'ThreadByGroupPersonIsMemberOf',
                 'fromKnot': self.fromKnot.serialize(),
                 'toKnot': self.toKnot.serialize(),
+                'id': self.id,
                 'fromPerson': self.fromPerson.name,
                 'toGroup': self.toGroup.name,
                 }
@@ -535,6 +542,7 @@ class ThreadByArtistWithFestivalInCommon(Thread):
                 'type': 'ThreadByArtistWithFestivalInCommon',
                 'fromKnot': self.fromKnot.serialize(),
                 'toKnot': self.toKnot.serialize(),
+                'id': self.id,
                 'fromArtist': self.fromArtist.name,
                 'toArtist': self.toArtist.name,
                 'festival': self.festival.name
@@ -734,8 +742,9 @@ class AriadneDB(object):
         artistEventLinks = self.queryDB(query, select)
         events=[]
         for eventTypeName in eventTypeNames:
-            events += [l.entity1 for l in artistEventLinks \
-                        if l.entity1.type.name == eventTypeName]
+                events += [l.entity1 for l in artistEventLinks \
+                            if l.entity1.type and \
+                            l.entity1.type.name == eventTypeName]
         if events and not eventTypeNames:
             events = [l.entity1 for l in artistEventLinks]
         return events
@@ -789,7 +798,7 @@ class AriadneController(object):
         recCreditedArtistsList = db.getArtistsByRecording(sRec, 'ALL')
         recCreditedArtists = CreditedArtists(recCreditedArtistsList)
         self.allowedThreads = aThreads
-        self.startKnot = Knot(self.startRec, recCreditedArtists)
+        self.startKnot = Knot(self.startRec, recCreditedArtists, knotID=0)
         self.currentKnot = self.startKnot
         self.threads = []
         self.knots = [self.startKnot]
@@ -1022,6 +1031,8 @@ class AriadneBackend(object):
         self.rankedThreadsPerThreadType = rankedThreadsPerThreadType
         self.allowedThreadTypes = allowedThreadTypes
         self.haveStartingRec = False
+        self.threadCounter = 0
+        self.knotCounter = 0
 
     def inputRecording(self, recID):
         defaultRecID = '084a24a9-b289-4584-9fb5-1ca0f7500eb3'
@@ -1038,9 +1049,11 @@ class AriadneBackend(object):
         startingRec = self.inputRecording(inputRecID)
         # Initialize AriadneController
         self.ctrl = AriadneController(self.db, startingRec, self.allowedThreadTypes)
+        self.knotCounter +=1
     
-    # Gets the best Threads starting at a certain Knot
-    def getBestThreads(self, fromKnot=None):
+    # Gets the best Threads starting at a certain Knot and stores them as
+    # an attribute
+    def updateBestThreads(self, fromKnot=None):
         if not fromKnot:
             fromKnot = self.ctrl.currentKnot
         # Get Thread types that apply for current Knot
@@ -1053,4 +1066,44 @@ class AriadneBackend(object):
         # Filter possible Threads to get the "best" per type (random atm)
         bestThreads = self.ctrl.rank(possibleThreads,
                 self.rankedThreadsPerThreadType)
-        return bestThreads
+        # Assign IDs to new best threads and store as attribute
+        self.bestThreads = self.assignThreadIDs(bestThreads)
+        
+    # Adds a unique ID to every thread
+    def assignThreadIDs(self, threads):
+        # Iterate threads to assign a counter equal to self.threadCounter
+        for t in threads:
+            self.threadCounter += 1
+            t.id = self.threadCounter
+        return threads
+
+    # Updates the Controller to follow a Thread given its ID
+    def followThread(self, threadID):
+        # Iterate current bestThreads to get Thread with given ID
+        haveThread = False
+        for t in self.bestThreads:
+            if t.id == threadID:
+                haveThread = True
+                thread = t
+                break
+        if haveThread:
+            thread.toKnot.id = self.knotCounter
+            self.ctrl.threads.append(thread)
+            self.ctrl.knots.append(thread.toKnot)
+            self.ctrl.currentKnot = thread.toKnot
+            self.knotCounter += 1
+        else:
+            raise Exception('Wrong Thread ID')
+
+    # Updates the Controller to change the current Knot given its ID
+    def moveCurrentKnot(self, knotID):
+        # Iterate Knots to get the one with given ID
+        haveKnot = False
+        for k in self.ctrl.knots:
+            if k.id == knotID:
+                haveKnot = True
+                self.ctrl.currentKnot = k
+                break
+        if not haveKnot:
+            raise Exception('Bad Knot ID')
+
