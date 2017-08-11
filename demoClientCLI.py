@@ -5,7 +5,7 @@ reload(sys);
 sys.setdefaultencoding("utf8")
 
 # Init CLI client
-possibleThreadsPerThreadType = 5
+possibleThreadsPerThreadType = 3
 rankedThreadsPerThreadType = 1
 cli = Ariadne.AriadneClientCLI('conn_strings.yml',
         possibleThreadsPerThreadType,
